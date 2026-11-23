@@ -6,6 +6,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 from am_database import AMAdatbazis
+from am_selejtezes import am_selejtezes_tabla
 
 
 AM_LELTAR_ALLAPOTOK = (
@@ -17,6 +18,8 @@ AM_LELTAR_ALLAPOTOK = (
 
 
 def am_leltar_tablak():
+    am_selejtezes_tabla()
+
     db = AMAdatbazis()
 
     try:
@@ -58,7 +61,10 @@ def am_leltar_adatok(datum):
                 f.teljes_nev,
                 COALESCE(l.allapot, 'Nem ellenőrzött'),
                 COALESCE(l.megjegyzes, ''),
-                l.id
+                l.id,
+                e.mennyiseg,
+                e.mertekegyseg,
+                e.brutto_ertek
             FROM eszkozok e
             LEFT JOIN helyisegek h
                 ON h.id = e.helyiseg_id
@@ -85,9 +91,32 @@ def am_leltar_adatok(datum):
         db.am_bezaras()
 
 
-def am_leltar_rogzites(eszkoz_id, allapot, datum, megjegyzes):
+def am_leltar_elozmenyek(eszkoz_id):
+    db = AMAdatbazis()
+
+    try:
+        return db.kurzor.execute("""
+            SELECT
+                id,
+                datum,
+                allapot,
+                megjegyzes
+            FROM leltarozas
+            WHERE eszkoz_id = ?
+            ORDER BY datum DESC, id DESC
+        """, (eszkoz_id,)).fetchall()
+
+    finally:
+        db.am_bezaras()
+
+
+def am_leltar_rogzites(
+    eszkoz_id, allapot, datum, megjegyzes
+):
     if allapot not in AM_LELTAR_ALLAPOTOK[1:]:
-        raise ValueError("Érvénytelen leltározási állapot!")
+        raise ValueError(
+            "Érvénytelen leltározási állapot!"
+        )
 
     datum = date.fromisoformat(datum).isoformat()
 
@@ -96,7 +125,7 @@ def am_leltar_rogzites(eszkoz_id, allapot, datum, megjegyzes):
     try:
         db.kurzor.execute("BEGIN IMMEDIATE")
 
-        eszkoz = db.kurzor.execute("""
+        letezik = db.kurzor.execute("""
             SELECT e.id
             FROM eszkozok e
             WHERE e.id = ?
@@ -109,9 +138,9 @@ def am_leltar_rogzites(eszkoz_id, allapot, datum, megjegyzes):
                 )
         """, (eszkoz_id,)).fetchone()
 
-        if eszkoz is None:
+        if letezik is None:
             raise ValueError(
-                "Az eszköz már nem aktív vagy nem található!"
+                "Az eszköz nem aktív vagy már elszállították!"
             )
 
         db.kurzor.execute("""
@@ -139,33 +168,18 @@ def am_leltar_rogzites(eszkoz_id, allapot, datum, megjegyzes):
         db.am_bezaras()
 
 
-def am_leltar_elozmenyek(eszkoz_id):
-    db = AMAdatbazis()
-
-    try:
-        return db.kurzor.execute("""
-            SELECT id, datum, allapot, megjegyzes
-            FROM leltarozas
-            WHERE eszkoz_id = ?
-            ORDER BY datum DESC, id DESC
-        """, (eszkoz_id,)).fetchall()
-
-    finally:
-        db.am_bezaras()
-
-
 def am_leltar_export(datum):
     try:
         datum = date.fromisoformat(datum).isoformat()
         adatok = am_leltar_adatok(datum)
 
         utvonal = filedialog.asksaveasfilename(
-            title="Leltározási eredmény mentése",
-            initialfile=f"Leltarozas_{datum}.xlsx",
+            title="Leltározási Excel mentése",
             defaultextension=".xlsx",
             filetypes=[
                 ("Excel-munkafüzet", "*.xlsx")
-            ]
+            ],
+            initialfile=f"Leltarozas_{datum}.xlsx"
         )
 
         if not utvonal:
@@ -181,7 +195,10 @@ def am_leltar_export(datum):
             "Gyártási szám",
             "Helyiség",
             "Felelős",
-            "Állapot",
+            "Mennyiség",
+            "Mértékegység",
+            "Bruttó érték",
+            "Leltározási állapot",
             "Megjegyzés",
             "Leltározás dátuma"
         ])
@@ -193,6 +210,9 @@ def am_leltar_export(datum):
                 sor[3] or "",
                 sor[4] or "",
                 sor[5] or "",
+                sor[9],
+                sor[10] or "",
+                sor[11],
                 sor[6],
                 sor[7],
                 datum
@@ -212,10 +232,13 @@ def am_leltar_export(datum):
             )
 
         szelessegek = [
-            20, 45, 22, 17, 27, 22, 50, 22
+            20, 42, 22, 17, 25,
+            14, 17, 19, 24, 45, 22
         ]
 
-        for index, szelesseg in enumerate(szelessegek, 1):
+        for index, szelesseg in enumerate(
+            szelessegek, 1
+        ):
             lap.column_dimensions[
                 get_column_letter(index)
             ].width = szelesseg
@@ -223,7 +246,9 @@ def am_leltar_export(datum):
         lap.freeze_panes = "A2"
         lap.auto_filter.ref = lap.dimensions
 
-        osszesito = munkafuzet.create_sheet("Összesítés")
+        osszesito = munkafuzet.create_sheet(
+            "Összesítés"
+        )
 
         osszesito.append([
             "Leltározás dátuma", datum
@@ -238,6 +263,7 @@ def am_leltar_export(datum):
                 1 for sor in adatok
                 if sor[6] == allapot
             )
+
             osszesito.append([
                 allapot, darab
             ])
@@ -248,13 +274,13 @@ def am_leltar_export(datum):
             len(adatok)
         ])
 
-        osszesito.column_dimensions["A"].width = 30
-        osszesito.column_dimensions["B"].width = 25
+        osszesito.column_dimensions["A"].width = 32
+        osszesito.column_dimensions["B"].width = 22
 
         for cella in osszesito[3]:
             cella.font = Font(
-                bold=True,
-                color="FFFFFF"
+                color="FFFFFF",
+                bold=True
             )
             cella.fill = PatternFill(
                 "solid",
@@ -275,54 +301,222 @@ def am_leltar_export(datum):
         )
 
 
-def am_leltar_elozmeny_ablak(szulo, eszkoz_id, eszkoz_nev):
-    ablak = tk.Toplevel(szulo)
-    ablak.title("Leltározási előzmények")
-    ablak.geometry("850x450")
-    ablak.transient(szulo)
+def am_leltar_eszkoz_ablak(
+    content, eszkoz, datum, frissites
+):
+    eszkoz_id = eszkoz[0]
+
+    ablak = tk.Toplevel(content)
+    ablak.title("AM – Eszköz leltározása")
+    ablak.geometry("760x670")
+    ablak.minsize(700, 600)
+    ablak.transient(content.winfo_toplevel())
     ablak.grab_set()
 
-    ttk.Label(
+    fo = ttk.Frame(
         ablak,
-        text=f"Leltározási előzmények – {eszkoz_nev}",
-        font=("Segoe UI", 13, "bold")
+        padding=22
+    )
+    fo.pack(
+        fill="both",
+        expand=True
+    )
+
+    ttk.Label(
+        fo,
+        text="Eszköz leltározása",
+        font=("Segoe UI", 17, "bold")
     ).pack(
         anchor="w",
-        padx=15,
-        pady=15
+        pady=(0, 15)
     )
 
-    keret = ttk.Frame(ablak, padding=10)
-    keret.pack(fill="both", expand=True)
+    adatkeret = ttk.LabelFrame(
+        fo,
+        text="Eszköz adatai",
+        padding=14
+    )
+    adatkeret.pack(
+        fill="x",
+        pady=(0, 15)
+    )
 
-    tabla = ttk.Treeview(
-        keret,
-        columns=(
-            "sorszam",
-            "datum",
-            "allapot",
-            "megjegyzes"
+    brutto = eszkoz[11]
+
+    if isinstance(brutto, (int, float)):
+        brutto_szoveg = (
+            f"{brutto:,.0f} Ft".replace(",", " ")
+        )
+    else:
+        brutto_szoveg = ""
+
+    eszkozadatok = [
+        ("Eszközazonosító", eszkoz[1]),
+        ("Megnevezés", eszkoz[2]),
+        ("Gyártási szám", eszkoz[3]),
+        ("Helyiség", eszkoz[4]),
+        ("Felelős", eszkoz[5]),
+        (
+            "Mennyiség",
+            f"{eszkoz[9] or ''} {eszkoz[10] or ''}"
         ),
-        show="headings"
-    )
-
-    oszlopok = [
-        ("sorszam", "Bejegyzés", 100),
-        ("datum", "Dátum", 130),
-        ("allapot", "Állapot", 150),
-        ("megjegyzes", "Megjegyzés", 400)
+        ("Bruttó érték", brutto_szoveg),
+        ("Leltározás dátuma", datum)
     ]
 
-    for kulcs, nev, szelesseg in oszlopok:
-        tabla.heading(kulcs, text=nev)
-        tabla.column(kulcs, width=szelesseg)
+    for index, (felirat, ertek) in enumerate(
+        eszkozadatok
+    ):
+        oszlop = (index // 4) * 2
+        sor = index % 4
 
-    gorgeto = ttk.Scrollbar(
-        keret,
-        command=tabla.yview
+        ttk.Label(
+            adatkeret,
+            text=f"{felirat}:",
+            font=("Segoe UI", 9, "bold")
+        ).grid(
+            row=sor,
+            column=oszlop,
+            sticky="w",
+            padx=(5, 10),
+            pady=7
+        )
+
+        ttk.Label(
+            adatkeret,
+            text="" if ertek is None else str(ertek),
+            wraplength=225
+        ).grid(
+            row=sor,
+            column=oszlop + 1,
+            sticky="w",
+            padx=(0, 15),
+            pady=7
+        )
+
+    adatkeret.columnconfigure(1, weight=1)
+    adatkeret.columnconfigure(3, weight=1)
+
+    ellenorzeskeret = ttk.LabelFrame(
+        fo,
+        text="Leltározási eredmény",
+        padding=14
+    )
+    ellenorzeskeret.pack(
+        fill="x",
+        pady=(0, 15)
     )
 
-    tabla.configure(
+    aktualis = eszkoz[6]
+
+    if aktualis in AM_LELTAR_ALLAPOTOK[1:]:
+        alap_allapot = aktualis
+    else:
+        alap_allapot = "Megvan"
+
+    allapot_valtozo = tk.StringVar(
+        value=alap_allapot
+    )
+
+    for allapot, leiras in [
+        (
+            "Megvan",
+            "Az eszköz megtalálható"
+        ),
+        (
+            "Hiányzik",
+            "Az eszköz nem található"
+        ),
+        (
+            "Sérült",
+            "Az eszköz sérült vagy hibás"
+        )
+    ]:
+        ttk.Radiobutton(
+            ellenorzeskeret,
+            text=f"{allapot} – {leiras}",
+            variable=allapot_valtozo,
+            value=allapot
+        ).pack(
+            anchor="w",
+            pady=4
+        )
+
+    ttk.Label(
+        ellenorzeskeret,
+        text="Megjegyzés:"
+    ).pack(
+        anchor="w",
+        pady=(12, 4)
+    )
+
+    megjegyzes_valtozo = tk.StringVar(
+        value=eszkoz[7] or ""
+    )
+
+    ttk.Entry(
+        ellenorzeskeret,
+        textvariable=megjegyzes_valtozo,
+        width=75
+    ).pack(
+        fill="x",
+        pady=(0, 4)
+    )
+
+    ttk.Label(
+        ellenorzeskeret,
+        text=(
+            "Hiányzó vagy sérült eszköznél "
+            "a megjegyzés kitöltése kötelező."
+        )
+    ).pack(
+        anchor="w",
+        pady=(3, 0)
+    )
+
+    elozmenykeret = ttk.LabelFrame(
+        fo,
+        text="Korábbi leltározási bejegyzések",
+        padding=10
+    )
+    elozmenykeret.pack(
+        fill="both",
+        expand=True,
+        pady=(0, 15)
+    )
+
+    oszlopok = (
+        "datum",
+        "allapot",
+        "megjegyzes"
+    )
+
+    elozmeny_tabla = ttk.Treeview(
+        elozmenykeret,
+        columns=oszlopok,
+        show="headings",
+        height=5
+    )
+
+    for kulcs, felirat, szelesseg in [
+        ("datum", "Dátum", 115),
+        ("allapot", "Állapot", 130),
+        ("megjegyzes", "Megjegyzés", 400)
+    ]:
+        elozmeny_tabla.heading(
+            kulcs, text=felirat
+        )
+        elozmeny_tabla.column(
+            kulcs, width=szelesseg
+        )
+
+    gorgeto = ttk.Scrollbar(
+        elozmenykeret,
+        orient="vertical",
+        command=elozmeny_tabla.yview
+    )
+
+    elozmeny_tabla.configure(
         yscrollcommand=gorgeto.set
     )
 
@@ -330,50 +524,107 @@ def am_leltar_elozmeny_ablak(szulo, eszkoz_id, eszkoz_nev):
         side="right",
         fill="y"
     )
-
-    tabla.pack(
+    elozmeny_tabla.pack(
         side="left",
         fill="both",
         expand=True
     )
 
-    for sor in am_leltar_elozmenyek(eszkoz_id):
-        tabla.insert(
+    for bejegyzes in am_leltar_elozmenyek(
+        eszkoz_id
+    ):
+        elozmeny_tabla.insert(
             "",
             "end",
             values=(
-                sor[0],
-                sor[1],
-                sor[2],
-                sor[3] or ""
+                bejegyzes[1],
+                bejegyzes[2],
+                bejegyzes[3] or ""
             )
         )
 
+    def am_mentes():
+        allapot = allapot_valtozo.get()
+        megjegyzes = (
+            megjegyzes_valtozo.get().strip()
+        )
+
+        if (
+            allapot in ("Hiányzik", "Sérült")
+            and not megjegyzes
+        ):
+            messagebox.showwarning(
+                "Hiányzó megjegyzés",
+                "Hiányzó vagy sérült eszköznél "
+                "kötelező megjegyzést megadni!",
+                parent=ablak
+            )
+            return
+
+        if aktualis != "Nem ellenőrzött":
+            if not messagebox.askyesno(
+                "Korábbi ellenőrzés javítása",
+                "Ezt az eszközt ezen a napon "
+                "már ellenőrizted.\n\n"
+                "Az új bejegyzés lesz érvényes, "
+                "de a korábbi is megmarad "
+                "az előzményekben.\n\n"
+                "Folytatod?",
+                parent=ablak
+            ):
+                return
+
+        try:
+            am_leltar_rogzites(
+                eszkoz_id,
+                allapot,
+                datum,
+                megjegyzes
+            )
+
+        except Exception as hiba:
+            messagebox.showerror(
+                "Mentési hiba",
+                str(hiba),
+                parent=ablak
+            )
+            return
+
+        ablak.destroy()
+        frissites()
+
+        messagebox.showinfo(
+            "Sikeres mentés",
+            "A leltározási eredményt elmentettük!"
+        )
+
+    gombkeret = ttk.Frame(fo)
+    gombkeret.pack(fill="x")
+
     ttk.Button(
-        ablak,
-        text="Bezárás",
+        gombkeret,
+        text="Leltározás mentése",
+        command=am_mentes
+    ).pack(
+        side="left",
+        padx=(0, 10)
+    )
+
+    ttk.Button(
+        gombkeret,
+        text="Mégse",
         command=ablak.destroy
-    ).pack(pady=10)
+    ).pack(side="left")
 
 
 def am_leltarozas_megjelenitese(content):
     am_leltar_tablak()
 
     oldal = ttk.Frame(content)
-    oldal.pack(fill="both", expand=True)
-
-    fejlec = ttk.Frame(oldal)
-    fejlec.pack(
-        fill="x",
-        padx=25,
-        pady=(5, 12)
+    oldal.pack(
+        fill="both",
+        expand=True
     )
-
-    ttk.Label(
-        fejlec,
-        text="Leltározás",
-        font=("Segoe UI", 16, "bold")
-    ).pack(side="left")
 
     datum_valtozo = tk.StringVar(
         value=date.today().isoformat()
@@ -381,14 +632,46 @@ def am_leltarozas_megjelenitese(content):
 
     aktiv_datum = date.today().isoformat()
 
+    kereses = tk.StringVar()
+    allapot_szuro = tk.StringVar(
+        value="Összes"
+    )
+    helyiseg_szuro = tk.StringVar(
+        value="Összes"
+    )
+
     lista = []
     rekordok = {}
+
+    fejlec = ttk.Frame(oldal)
+    fejlec.pack(
+        fill="x",
+        padx=25,
+        pady=10
+    )
+
+    ttk.Label(
+        fejlec,
+        text="Eszközök leltározása",
+        font=("Segoe UI", 16, "bold")
+    ).pack(anchor="w")
+
+    ttk.Label(
+        fejlec,
+        text=(
+            "Kattints duplán egy eszközre "
+            "a leltározási ablak megnyitásához."
+        )
+    ).pack(
+        anchor="w",
+        pady=(5, 0)
+    )
 
     szurokeret = ttk.Frame(oldal)
     szurokeret.pack(
         fill="x",
         padx=25,
-        pady=6
+        pady=10
     )
 
     ttk.Label(
@@ -398,7 +681,7 @@ def am_leltarozas_megjelenitese(content):
         row=0,
         column=0,
         padx=5,
-        pady=5,
+        pady=6,
         sticky="w"
     )
 
@@ -410,7 +693,8 @@ def am_leltarozas_megjelenitese(content):
         row=0,
         column=1,
         padx=5,
-        pady=5
+        pady=6,
+        sticky="w"
     )
 
     ttk.Label(
@@ -419,16 +703,7 @@ def am_leltarozas_megjelenitese(content):
     ).grid(
         row=0,
         column=2,
-        padx=5,
-        pady=5
-    )
-
-    kereses = tk.StringVar()
-    allapot_szuro = tk.StringVar(
-        value="Összes"
-    )
-    helyiseg_szuro = tk.StringVar(
-        value="Összes"
+        padx=5
     )
 
     ttk.Label(
@@ -438,7 +713,7 @@ def am_leltarozas_megjelenitese(content):
         row=1,
         column=0,
         padx=5,
-        pady=5,
+        pady=6,
         sticky="w"
     )
 
@@ -451,7 +726,7 @@ def am_leltarozas_megjelenitese(content):
         column=1,
         columnspan=2,
         padx=5,
-        pady=5,
+        pady=6,
         sticky="w"
     )
 
@@ -462,20 +737,22 @@ def am_leltarozas_megjelenitese(content):
         row=1,
         column=3,
         padx=5,
-        pady=5
+        pady=6
     )
 
     ttk.Combobox(
         szurokeret,
         textvariable=allapot_szuro,
-        values=("Összes",) + AM_LELTAR_ALLAPOTOK,
+        values=(
+            "Összes",
+        ) + AM_LELTAR_ALLAPOTOK,
         state="readonly",
         width=20
     ).grid(
         row=1,
         column=4,
         padx=5,
-        pady=5
+        pady=6
     )
 
     ttk.Label(
@@ -485,7 +762,7 @@ def am_leltarozas_megjelenitese(content):
         row=2,
         column=0,
         padx=5,
-        pady=5,
+        pady=6,
         sticky="w"
     )
 
@@ -500,7 +777,7 @@ def am_leltarozas_megjelenitese(content):
         row=2,
         column=1,
         padx=5,
-        pady=5,
+        pady=6,
         sticky="w"
     )
 
@@ -513,7 +790,7 @@ def am_leltarozas_megjelenitese(content):
 
     szamlalok = {}
 
-    for szoveg in (
+    for felirat in (
         "Összes",
         "Nem ellenőrzött",
         "Megvan",
@@ -521,28 +798,31 @@ def am_leltarozas_megjelenitese(content):
         "Sérült"
     ):
         valtozo = tk.StringVar(
-            value=f"{szoveg}: 0"
+            value=f"{felirat}: 0"
         )
 
         ttk.Label(
             osszesites,
             textvariable=valtozo,
-            padding=(10, 7)
-        ).pack(side="left", padx=5)
+            padding=(8, 7)
+        ).pack(
+            side="left",
+            padx=5
+        )
 
-        szamlalok[szoveg] = valtozo
+        szamlalok[felirat] = valtozo
 
     tablakeret = ttk.Frame(oldal)
     tablakeret.pack(
         fill="both",
         expand=True,
         padx=25,
-        pady=5
+        pady=10
     )
 
     oszlopok = (
         "azonosito",
-        "nev",
+        "megnevezes",
         "gyartasi",
         "helyiseg",
         "felelos",
@@ -557,17 +837,45 @@ def am_leltarozas_megjelenitese(content):
     )
 
     fejlecek = [
-        ("azonosito", "Eszközazonosító", 125),
-        ("nev", "Megnevezés", 245),
-        ("gyartasi", "Gyártási szám", 140),
-        ("helyiseg", "Helyiség", 90),
-        ("felelos", "Felelős", 150),
-        ("allapot", "Leltározási állapot", 150)
+        (
+            "azonosito",
+            "Eszközazonosító",
+            125
+        ),
+        (
+            "megnevezes",
+            "Megnevezés",
+            245
+        ),
+        (
+            "gyartasi",
+            "Gyártási szám",
+            135
+        ),
+        (
+            "helyiseg",
+            "Helyiség",
+            90
+        ),
+        (
+            "felelos",
+            "Felelős",
+            145
+        ),
+        (
+            "allapot",
+            "Leltározási állapot",
+            150
+        )
     ]
 
-    for kulcs, nev, szelesseg in fejlecek:
-        tabla.heading(kulcs, text=nev)
-        tabla.column(kulcs, width=szelesseg)
+    for kulcs, felirat, szelesseg in fejlecek:
+        tabla.heading(
+            kulcs, text=felirat
+        )
+        tabla.column(
+            kulcs, width=szelesseg
+        )
 
     gorgeto = ttk.Scrollbar(
         tablakeret,
@@ -591,6 +899,7 @@ def am_leltarozas_megjelenitese(content):
     )
 
     talalatok = tk.StringVar()
+
     ttk.Label(
         oldal,
         textvariable=talalatok
@@ -600,130 +909,20 @@ def am_leltarozas_megjelenitese(content):
         pady=5
     )
 
-    adatkeret = ttk.LabelFrame(
-        oldal,
-        text="Kiválasztott eszköz ellenőrzése",
-        padding=12
-    )
-
-    adatkeret.pack(
-        fill="x",
-        padx=25,
-        pady=10
-    )
-
-    eszkoz_felirat = tk.StringVar(
-        value="Nincs kiválasztott eszköz"
-    )
-
-    ttk.Label(
-        adatkeret,
-        textvariable=eszkoz_felirat
-    ).grid(
-        row=0,
-        column=0,
-        columnspan=4,
-        sticky="w",
-        pady=8
-    )
-
-    uj_allapot = tk.StringVar(
-        value="Megvan"
-    )
-
-    ttk.Label(
-        adatkeret,
-        text="Állapot:"
-    ).grid(
-        row=1,
-        column=0,
-        padx=5,
-        pady=5,
-        sticky="w"
-    )
-
-    ttk.Combobox(
-        adatkeret,
-        textvariable=uj_allapot,
-        values=AM_LELTAR_ALLAPOTOK[1:],
-        state="readonly",
-        width=20
-    ).grid(
-        row=1,
-        column=1,
-        padx=5,
-        pady=5,
-        sticky="w"
-    )
-
-    megjegyzes = tk.StringVar()
-
-    ttk.Label(
-        adatkeret,
-        text="Megjegyzés:"
-    ).grid(
-        row=2,
-        column=0,
-        padx=5,
-        pady=5,
-        sticky="w"
-    )
-
-    ttk.Entry(
-        adatkeret,
-        textvariable=megjegyzes,
-        width=65
-    ).grid(
-        row=2,
-        column=1,
-        columnspan=3,
-        padx=5,
-        pady=5,
-        sticky="ew"
-    )
-
-    adatkeret.columnconfigure(3, weight=1)
-
-    def am_kivalasztott():
-        kijeloles = tabla.selection()
-
-        if not kijeloles:
-            return None
-
-        return rekordok.get(
-            int(kijeloles[0])
-        )
-
-    def am_kijeloles_valtozas(event=None):
-        sor = am_kivalasztott()
-
-        if sor is None:
-            eszkoz_felirat.set(
-                "Nincs kiválasztott eszköz"
-            )
-            megjegyzes.set("")
-            uj_allapot.set("Megvan")
-            return
-
-        eszkoz_felirat.set(
-            f"{sor[1]} – {sor[2]}"
-        )
-
-        if sor[6] in AM_LELTAR_ALLAPOTOK[1:]:
-            uj_allapot.set(sor[6])
-        else:
-            uj_allapot.set("Megvan")
-
-        megjegyzes.set(sor[7] or "")
-
     def am_szures(*args):
         kijeloles = tabla.selection()
-        korabbi_id = kijeloles[0] if kijeloles else None
+        regi_id = (
+            kijeloles[0]
+            if kijeloles else None
+        )
 
         for elem in tabla.get_children():
             tabla.delete(elem)
 
-        keresett = kereses.get().casefold().strip()
+        keresett = (
+            kereses.get().casefold().strip()
+        )
+
         kert_allapot = allapot_szuro.get()
         kert_helyiseg = helyiseg_szuro.get()
 
@@ -770,14 +969,15 @@ def am_leltarozas_megjelenitese(content):
             f"Találatok: {darab} / {len(lista)}"
         )
 
-        if korabbi_id and tabla.exists(korabbi_id):
-            tabla.selection_set(korabbi_id)
-            tabla.see(korabbi_id)
-        else:
-            am_kijeloles_valtozas()
+        if regi_id and tabla.exists(regi_id):
+            tabla.selection_set(regi_id)
+            tabla.see(regi_id)
 
-    def am_adatok_frissitese():
+    def am_frissites():
         nonlocal lista, rekordok
+
+        if not oldal.winfo_exists():
+            return
 
         lista = am_leltar_adatok(aktiv_datum)
 
@@ -792,14 +992,21 @@ def am_leltarozas_megjelenitese(content):
             if sor[4] is not None
         })
 
+        helyiseg_ertekek = [
+            "Összes"
+        ] + helyisegek
+
         helyiseg_combo.configure(
-            values=["Összes"] + helyisegek
+            values=helyiseg_ertekek
         )
 
-        if helyiseg_szuro.get() not in (
-            ["Összes"] + helyisegek
+        if (
+            helyiseg_szuro.get()
+            not in helyiseg_ertekek
         ):
-            helyiseg_szuro.set("Összes")
+            helyiseg_szuro.set(
+                "Összes"
+            )
 
         szamlalok["Összes"].set(
             f"Összes: {len(lista)}"
@@ -824,6 +1031,7 @@ def am_leltarozas_megjelenitese(content):
             uj_datum = date.fromisoformat(
                 datum_valtozo.get().strip()
             ).isoformat()
+
         except ValueError:
             messagebox.showerror(
                 "Hibás dátum",
@@ -832,7 +1040,7 @@ def am_leltarozas_megjelenitese(content):
             return
 
         aktiv_datum = uj_datum
-        am_adatok_frissitese()
+        am_frissites()
 
     ttk.Button(
         szurokeret,
@@ -842,105 +1050,62 @@ def am_leltarozas_megjelenitese(content):
         row=0,
         column=3,
         padx=5,
-        pady=5
+        pady=6
     )
 
-    def am_mentes():
-        sor = am_kivalasztott()
+    def am_eszkoz_megnyitas(event=None):
+        kijeloles = tabla.selection()
 
-        if sor is None:
+        if not kijeloles:
             messagebox.showwarning(
                 "Nincs kiválasztás",
-                "Először jelölj ki egy eszközt!"
+                "Először válassz ki egy eszközt!"
             )
             return
 
-        if datum_valtozo.get().strip() != aktiv_datum:
+        if (
+            datum_valtozo.get().strip()
+            != aktiv_datum
+        ):
             messagebox.showwarning(
-                "Dátum változott",
+                "Dátum megváltozott",
                 "Először kattints a Nap betöltése gombra!"
             )
             return
 
-        allapot = uj_allapot.get()
-        szoveg = megjegyzes.get().strip()
+        eszkoz_id = int(kijeloles[0])
+        eszkoz = rekordok.get(eszkoz_id)
 
-        if allapot in ("Hiányzik", "Sérült") and not szoveg:
-            messagebox.showwarning(
-                "Hiányzó megjegyzés",
-                "Hiányzó vagy sérült eszköznél "
-                "kötelező megjegyzést írni!"
-            )
-            return
-
-        if sor[6] != "Nem ellenőrzött":
-            if not messagebox.askyesno(
-                "Korábbi rögzítés javítása",
-                "Ezt az eszközt ezen a napon már "
-                "ellenőrizted.\n\n"
-                "Az új bejegyzés lesz az érvényes, "
-                "de a korábbi megmarad az előzményekben.\n\n"
-                "Folytatod?"
-            ):
-                return
-
-        try:
-            am_leltar_rogzites(
-                sor[0],
-                allapot,
-                aktiv_datum,
-                szoveg
-            )
-        except Exception as hiba:
+        if eszkoz is None:
             messagebox.showerror(
-                "Mentési hiba",
-                str(hiba)
+                "Hiba",
+                "Az eszköz nem található!"
             )
             return
 
-        am_adatok_frissitese()
-
-        messagebox.showinfo(
-            "Sikeres mentés",
-            "A leltározási adatokat elmentettük!"
+        am_leltar_eszkoz_ablak(
+            content,
+            eszkoz,
+            aktiv_datum,
+            am_frissites
         )
 
-    def am_elozmenyek():
-        sor = am_kivalasztott()
-
-        if sor is None:
-            messagebox.showwarning(
-                "Nincs kiválasztás",
-                "Először jelölj ki egy eszközt!"
-            )
-            return
-
-        am_leltar_elozmeny_ablak(
-            content.winfo_toplevel(),
-            sor[0],
-            f"{sor[1]} – {sor[2]}"
-        )
+    tabla.bind(
+        "<Double-1>",
+        am_eszkoz_megnyitas
+    )
 
     gombkeret = ttk.Frame(oldal)
     gombkeret.pack(
         fill="x",
         padx=25,
-        pady=(0, 15)
+        pady=(5, 15)
     )
 
     ttk.Button(
         gombkeret,
-        text="Ellenőrzés mentése",
-        command=am_mentes
-    ).pack(
-        side="left",
-        padx=5
-    )
-
-    ttk.Button(
-        gombkeret,
-        text="Előzmények",
-        command=am_elozmenyek
+        text="Kijelölt eszköz leltározása",
+        command=am_eszkoz_megnyitas
     ).pack(
         side="left",
         padx=5
@@ -949,7 +1114,7 @@ def am_leltarozas_megjelenitese(content):
     ttk.Button(
         gombkeret,
         text="Frissítés",
-        command=am_adatok_frissitese
+        command=am_frissites
     ).pack(
         side="left",
         padx=5
@@ -966,21 +1131,19 @@ def am_leltarozas_megjelenitese(content):
         padx=5
     )
 
-    tabla.bind(
-        "<<TreeviewSelect>>",
-        am_kijeloles_valtozas
-    )
-
     kereses.trace_add(
-        "write", am_szures
+        "write",
+        am_szures
     )
 
     allapot_szuro.trace_add(
-        "write", am_szures
+        "write",
+        am_szures
     )
 
     helyiseg_szuro.trace_add(
-        "write", am_szures
+        "write",
+        am_szures
     )
 
-    am_adatok_frissitese()
+    am_frissites()
