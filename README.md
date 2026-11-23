@@ -1,318 +1,78 @@
-# unidunalev2026
-
-Script nyelvek
-
-
-
-&#x20;AM – Leltárkezelő rendszer
-
-
+# AM – Leltárkezelő rendszer
 
 Készítette: Abaffy Miklós  
-
 Intézmény: Dunaújvárosi Egyetem  
-
 Tantárgy: Szkript nyelvek  
-
 Programozási nyelv: Python
 
+## 1. A feladat bemutatása
 
+A beadandó feladatomhoz egy Python nyelven működő leltárkezelő programot készítettem.
 
-&#x20;1. A program bemutatása
+A program célja, hogy egy eszközállomány adatait egyszerűen lehessen nyilvántartani és kezelni. Lehetőség van új eszközök felvételére, a meglévők módosítására, leltározására, áthelyezésére és selejtezésére.
 
+A program grafikus felhasználói felülettel rendelkezik, így a legtöbb művelet gombokkal, táblázatokkal és külön adatbeviteli ablakokkal végezhető el.
 
+Az alkalmazás több önálló nyilvántartást is képes kezelni. Ezek külön adatbázisban tárolják az eszközöket és a hozzájuk tartozó információkat.
 
-Az AM Leltárkezelő rendszer egy Python nyelven fejlesztett, grafikus felhasználói felülettel rendelkező eszköznyilvántartó alkalmazás.
+A programhoz tartozó mintaadatok fiktívek, kizárólag a működés bemutatására szolgálnak.
 
+## 2. Felhasznált technológiák
 
+A program elkészítéséhez az alábbi modulokat és technológiákat használtam:
 
-A program célja az eszközállomány rendszerezett kezelése, az eszközök mozgásának követése, a leltározási folyamat támogatása és különféle kimutatások készítése.
+- Python: a program működésének megvalósítása.
+- Tkinter és ttk: a grafikus felület kialakítása.
+- SQLite (sqlite3): az eszközök és a hozzájuk kapcsolódó adatok tárolása.
+- openpyxl: Excel-fájlok beolvasása és létrehozása.
+- pathlib: fájlok és könyvtárak elérési útjainak kezelése.
+- json: a különböző nyilvántartások adatainak kezelése.
+- datetime: dátumok és időpontok kezelése.
+- Git és GitHub: a forráskód verziókezelése.
 
+## 3. A program funkciói
 
+### 3.1. Nyilvántartások kezelése
 
-Az alkalmazás több, egymástól független nyilvántartást is képes kezelni. Minden nyilvántartás külön SQLite-adatbázissal rendelkezik.
+A program indításakor ki lehet választani, hogy melyik nyilvántartással szeretnénk dolgozni.
 
+Új nyilvántartás is létrehozható, amely saját SQLite-adatbázist kap. Az egyes nyilvántartások adatai egymástól függetlenek.
 
+A nyilvántartások között a program futása közben is lehet váltani.
 
-A projekt demonstrációs célból fiktív adatokat tartalmaz.
+### 3.2. Eszköznyilvántartás
 
+Az eszköznyilvántartásban megtekinthetők az aktuálisan nyilvántartott eszközök.
 
+A következő műveletek végezhetők el:
 
-&#x20;2. Felhasznált technológiák
+- Új eszköz felvétele.
+- Meglévő eszköz adatainak módosítása.
+- Keresés eszközazonosító és egyéb adatok alapján.
+- Szűrés helyiség és felelős szerint.
+- Eszköz archiválása és visszaállítása.
+- Eszköz selejtezése.
 
+### 3.3. Leltározás
 
+A leltározási menüpontban az eszközök ellenőrzése végezhető el.
 
-\- Python – a program működésének megvalósítása
+A kiválasztott eszközre duplán kattintva külön ablak jelenik meg, amelyben rögzíthető a leltározás eredménye.
 
-\- Tkinter és ttk – grafikus felhasználói felület
+A lehetséges állapotok:
 
-\- SQLite – adatbázis-kezelés
+- Megvan
+- Hiányzik
+- Sérült
 
-\- openpyxl – Excel-fájlok importálása és exportálása
+Az ellenőrzésekhez megjegyzés is megadható. A korábbi leltározási bejegyzések visszakereshetők.
 
-\- pathlib – fájlok és könyvtárak kezelése
+A leltározás eredménye Excel-fájlba is exportálható.
 
-\- json – a nyilvántartások listájának tárolása
+### 3.4. Eszközök áthelyezése
 
-\- datetime – dátumok és időpontok kezelése
+Az eszközök másik helyiségbe helyezhetők át, illetve másik felelőshöz rendelhetők.
 
-\- Git és GitHub – verziókezelés
+Az áthelyezés során megadható a dátum és az áthelyezés indoka.
 
-
-
-&#x20;3. A program funkciói
-
-
-
-&#x20;3.1. Nyilvántartások kezelése
-
-
-
-Az alkalmazás indításakor kiválasztható a használni kívánt nyilvántartás. Új, önálló nyilvántartás is létrehozható.
-
-
-
-&#x20;3.2. Eszköznyilvántartás
-
-
-
-\- Új eszköz felvétele
-
-\- Meglévő eszköz adatainak módosítása
-
-\- Keresés és szűrés
-
-\- Archiválás és visszaállítás
-
-\- Selejtezési folyamat kezelése
-
-
-
-&#x20;3.3. Leltározás
-
-
-
-Az eszközök leltározási állapota külön ablakban rögzíthető.
-
-
-
-Lehetséges állapotok:
-
-\- Megvan
-
-\- Hiányzik
-
-\- Sérült
-
-
-
-A korábbi leltározási bejegyzések megtekinthetők. A leltározási eredmények Excelbe exportálhatók.
-
-
-
-&#x20;3.4. Eszközök áthelyezése
-
-
-
-Az eszközök másik helyiséghez vagy felelőshöz rendelhetők.
-
-
-
-A program nyilvántartja az áthelyezések dátumát, korábbi és új adatait, valamint az áthelyezés indokát.
-
-
-
-&#x20;3.5. Helyiségek és felelősök
-
-
-
-Új helyiségek és felelősök rögzíthetők.
-
-
-
-A kiválasztott helyiséghez vagy felelőshöz tartozó eszközök dupla kattintással megjeleníthetők.
-
-
-
-Az eszközlisták Excelbe exportálhatók vagy nyomtatásra előkészíthetők.
-
-
-
-&#x20;3.6. Statisztikák
-
-
-
-Az alkalmazás többek között az alábbi adatokat jeleníti meg:
-
-
-
-\- Aktív és archivált eszközök száma
-
-\- Elszállított eszközök száma
-
-\- Eszközállomány bruttó értéke
-
-\- Eszközök megoszlása helyiségenként és felelősönként
-
-\- Leltározási eredmények
-
-\- Selejtezési és áthelyezési adatok
-
-
-
-A statisztikai eredmények grafikus diagramokon és Excel-kimutatásokban is megjeleníthetők.
-
-
-
-&#x20;3.7. Excel-importálás és -exportálás
-
-
-
-Az alkalmazás 24 oszlopos Excel-formátumból képes eszközadatokat importálni.
-
-
-
-Az importálás csak olyan nyilvántartásba engedélyezett, amely még nem tartalmaz eszközöket.
-
-
-
-Az aktív eszközállomány Excel-fájlba exportálható.
-
-
-
-&#x20;4. Telepítés
-
-
-
-A program futtatásához Python és az `openpyxl` csomag szükséges.
-
-
-
-A projekt letöltése:
-
-
-
-git clone https://github.com/jackobson/unidunalev2026.git
-
-cd unidunalev2026
-
-
-
-
-
-Virtuális környezet létrehozása:
-
-
-
-python -m venv .venv
-
-
-
-Windows alatt a virtuális környezet aktiválása:
-
-
-
-.venv\\Scripts\\Activate.ps1
-
-
-
-A szükséges csomag telepítése:
-
-
-
-python -m pip install -r requirements.txt
-
-
-
-A program indítása:
-
-
-
-python main.py
-
-
-
-&#x20;5. Használat
-
-
-
-A program indításakor megjelenik a nyilvántartásválasztó ablak.
-
-
-
-A felhasználó kiválaszthatja a meglévő nyilvántartást, vagy létrehozhat egy újat.
-
-
-
-A nyilvántartás megnyitása után a bal oldali menüből érhetők el a különböző funkciók.
-
-
-
-Az eszközök leltározása és áthelyezése külön adatbeviteli ablakokban történik.
-
-
-
-&#x20;6. Adattárolás
-
-
-
-Az alkalmazás SQLite-adatbázisokat használ.
-
-
-
-A `leltar.db` tartalmazza az eredeti demonstrációs nyilvántartást.
-
-
-
-Az újonnan létrehozott nyilvántartások adatbázisai a `nyilvantartasok` mappába kerülnek.
-
-
-
-Az `am\_nyilvantartasok.json` fájl a nyilvántartások neveit és adatbázisfájljainak elérési útját tartalmazza.
-
-
-
-&#x20;7. A projekt felépítése
-
-
-
-| Fájl | Feladat |
-
-|---|---|
-
-| `main.py` | A grafikus főablak és a navigáció |
-
-| `am\_database.py` | SQLite-adatbázis-kezelés |
-
-| `am\_nyilvantartasok.py` | Több nyilvántartás kezelése |
-
-| `am\_eszkozok.py` | Eszközök nyilvántartása |
-
-| `am\_leltarozas.py` | Leltározási műveletek |
-
-| `am\_athelyezes.py` | Eszközök áthelyezése |
-
-| `am\_selejtezes.py` | Selejtezési folyamat |
-
-| `am\_kimutatasok.py` | Helyiségek és felelősök kimutatásai |
-
-| `am\_statisztikak.py` | Statisztikák és diagramok |
-
-| `am\_excel.py` | Excel-adatok importálása és exportálása |
-
-
-
-&#x20;8. Megjegyzések
-
-
-
-Az alkalmazás oktatási célból készült.
-
-
-
-A mellékelt demonstrációs nyilvántartás fiktív adatokat tartalmaz.
-
-
-
-A projekt továbbfejlesztési lehetőségei közé tartozik a felhasználói jogosultságkezelés és a részletesebb riportkészítés.
-
+A program elt
